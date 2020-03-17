@@ -57,7 +57,9 @@ const getTags = (names, type) =>
 
 const upsertTorrent = async (torrent, knex) => {
 	try {
-		const records = await knex('torrents').where({ infohash: torrent.infohash });
+		const records = await knex('torrents')
+			.select('infohash')
+			.where({ infohash: torrent.infohash });
 
 		if (config.debug) {
 			console.log(`${torrent.infohash} - ${records.length > 0 ? 'Updated' : 'Inserted'}`);
@@ -118,26 +120,22 @@ const getMetadata = (infohash, rinfo, knex) => {
 	const socket = new net.Socket();
 
 	socket.setTimeout(config.timeout || 5000);
-	socket.connect(
-		rinfo.port,
-		rinfo.address,
-		() => {
-			const wire = new Wire(infohash);
+	socket.connect(rinfo.port, rinfo.address, () => {
+		const wire = new Wire(infohash);
 
-			socket.pipe(wire).pipe(socket);
+		socket.pipe(wire).pipe(socket);
 
-			wire.on('metadata', (metadata, hash) => {
-				onMetadata(metadata, hash, knex);
-				socket.destroy();
-			});
+		wire.on('metadata', (metadata, hash) => {
+			onMetadata(metadata, hash, knex);
+			socket.destroy();
+		});
 
-			wire.on('fail', () => {
-				socket.destroy();
-			});
+		wire.on('fail', () => {
+			socket.destroy();
+		});
 
-			wire.sendHandshake();
-		},
-	);
+		wire.sendHandshake();
+	});
 
 	socket.on('error', () => {
 		socket.destroy();

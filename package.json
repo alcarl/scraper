@@ -9,6 +9,7 @@
 		"bitfield": "^1.1.2",
 		"bittorrent-tracker": "^9.10.1",
 		"elasticsearch": "^15.1.1",
+		"jest": "^25.1.0",
 		"knex": "^0.15.2",
 		"mysql": "^2.16.0",
 		"pm2": "^3.1.3",
