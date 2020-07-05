@@ -2,6 +2,7 @@ const bencode = require('bencode');
 const config = require('./../config');
 const crypto = require('crypto');
 const dgram = require('dgram');
+const Cache = require('./Cache');
 
 const decodeNodes = (data) => {
 	const nodes = [];
@@ -44,6 +45,7 @@ const clientID = getRandomID();
 const serverSocket = dgram.createSocket('udp4');
 let nodes = [];
 let onTorrent = (torrent) => console.log(torrent);
+const cache = new Cache();
 
 const sendMessage = safe((message, rinfo) => {
 	const buf = bencode.encode(message);
@@ -56,9 +58,19 @@ const onFindNodeResponse = safe((responseNodes) => {
 
 	decodedNodes.forEach((node) => {
 		if (node.address !== '0.0.0.0' && node.nid !== clientID && node.port < 65536 && node.port > 0) {
-			if (nodes.length < 2000) {
-				nodes.push(node);
-			}
+			cache.get(node.nid, (err, value) => {
+				if (!err && value) {
+					if (err) {
+						console.log(err);
+					} else if (config.debug) {
+						//							console.log(`node no expire`);
+					}
+				} else if (nodes.length <= 9000) {
+					nodes.push(node);
+					cache.set(node.nid, 1);
+					cache.expire(node.nid, config.redis.expire);
+				}
+			});
 		}
 	});
 });
@@ -118,18 +130,33 @@ const sendFindNodeRequest = ({ address, port }, nid) => {
 	sendMessage({ a: { id, target: getRandomID() }, q: 'find_node', t, y: 'q' }, { address, port });
 };
 
-const makeNeighbours = () => {
+const sendNodes = () => {
 	nodes.forEach((node) => {
 		sendFindNodeRequest(node, node.nid);
 	});
+	const nodesCount = nodes.length;
+
+	if (config.debug) {
+		console.log(`start find node from ${nodesCount}  nodes`);
+	}
 	nodes = [];
+};
+const makeNeighbours = () => {
+	try {
+		nodes = nodes.concat(config.bootstrapNodes);
+		sendNodes();
+	} catch (error) {
+		if (config.debug) {
+			console.log(error);
+		}
+	}
+	const sleepTime = Math.ceil(Math.random() * 3) + 1;
+
+	setTimeout(() => makeNeighbours(), sleepTime * 1000);
 };
 
 const start = () => {
-	nodes = nodes.concat(config.bootstrapNodes);
 	makeNeighbours();
-
-	setTimeout(() => start(), 1000);
 };
 
 const onListening = () => {

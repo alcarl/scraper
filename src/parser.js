@@ -80,19 +80,27 @@ const upsertTorrent = async (torrent, knex) => {
 	}
 };
 
-const buildRecord = (names, knex, { files, infohash, name }) => {
+const buildRecord = (names, knex, { files, infohash, invalid, name }) => {
 	try {
 		const type = getType(names);
-		const tags = [...new Set(getTags(names, type))];
-
+		const fileLength = files.reduce((result, { length: fileLength }) => result + fileLength, 0);
 		const record = {
 			files: JSON.stringify(files),
 			infohash: infohash.toString('hex'),
-			length: files.reduce((result, { length: fileLength }) => result + fileLength, 0),
+			length: fileLength,
 			name,
-			tags: tags.join(','),
+			tags: [...new Set(getTags(names, type))].join(','),
 			type,
 		};
+
+		if (invalid.length > 0) {
+			record.type = 'invalid';
+			record.tags = ['invalid'];
+			// if(invalid.length>10){
+			//	tags=invalid.slice(0,9);
+			// }
+			console.log(`invalid=${fileLength}=${name}`);
+		}
 
 		upsertTorrent(record, knex);
 	} catch (error) {
@@ -108,8 +116,9 @@ const onMetadata = (metadata, infohash, knex) => {
 		const invalid = filterTorrent(names);
 		const filesWithOriginal = name && length ? [{ length, path: name }, ...files] : files;
 
-		if (!invalid.length > 0 && files.length > 0) {
-			buildRecord(names, knex, { files: filesWithOriginal, infohash, name });
+		//		if (!invalid.length > 0 && files.length > 0) {
+		if (files.length > 0) {
+			buildRecord(names, knex, { files: filesWithOriginal, infohash, invalid, name });
 		}
 	} catch (error) {
 		console.log(error);

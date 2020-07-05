@@ -40,6 +40,12 @@ const config = {
 	},
 	filters,
 	formats,
+	redis: {
+		expire: 3600,
+		host: '127.0.0.1',
+		opts: { password: '' },
+		port: 6379,
+	},
 	search: {
 		// Seconds between every bulk insert
 		frequency: 30,
