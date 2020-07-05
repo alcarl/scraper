@@ -58,7 +58,7 @@ const onFindNodeResponse = safe((responseNodes) => {
 
 	decodedNodes.forEach((node) => {
 		if (node.address !== '0.0.0.0' && node.nid !== clientID && node.port < 65536 && node.port > 0) {
-			cache.get(node.nid, (err, value) => {
+			cache.get(node.address, (err, value) => {
 				if (!err && value) {
 					if (err) {
 						console.log(err);
@@ -67,8 +67,8 @@ const onFindNodeResponse = safe((responseNodes) => {
 					}
 				} else if (nodes.length <= 9000) {
 					nodes.push(node);
-					cache.set(node.nid, 1);
-					cache.expire(node.nid, config.redis.expire);
+					cache.set(node.address, 1);
+					cache.expire(node.address, config.redis.expire);
 				}
 			});
 		}
