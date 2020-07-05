@@ -41,7 +41,7 @@ const config = {
 	filters,
 	formats,
 	redis: {
-		expire: 3600,
+		expire: 3600 * 24,
 		host: '127.0.0.1',
 		opts: { password: '' },
 		port: 6379,
