@@ -62,6 +62,7 @@ const getRecords = async (knex) => {
 		.where('trackerUpdated', '<', age)
 		.limit(newLimit);
 
+	console.log(`newrecords:${newRecords.length},outdaterecord:${outdatedRecords.length}`);
 	return [...newRecords, ...outdatedRecords];
 };
 

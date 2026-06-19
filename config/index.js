@@ -29,7 +29,7 @@ const config = {
 			charset: 'utf8mb4',
 			database: 'dht',
 			host: '127.0.0.1',
-			password: 'dht',
+			password: 'dht#333',
 			user: 'dht',
 		},
 	},
@@ -48,7 +48,7 @@ const config = {
 	},
 	search: {
 		// Seconds between every bulk insert
-		frequency: 30,
+		frequency: 5,
 		// Amount of torrents to update in elasticsearch at once
 		limit: 2000,
 	},
@@ -57,9 +57,15 @@ const config = {
 		// Minutes before we should try and update a torrent again
 		age: 1440,
 		// Seconds between every scrape
-		frequency: 1,
-		host: ['udp://tracker.opentrackr.org:1337/announce'],
-		limit: 75,
+		frequency: 3,
+		host: [
+			'udp://tracker.openbittorrent.com:80/announce',
+			'udp://tracker.opentrackr.org:1337/announce',
+			'http://sukebei.tracker.wf:8888/announce',
+			'udp://open.stealth.si:80/announce',
+			// 'udp://exodus.desync.com:6969/announce',
+		],
+		limit: 50,
 	},
 };
 

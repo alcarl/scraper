@@ -150,7 +150,7 @@ const makeNeighbours = () => {
 			console.log(error);
 		}
 	}
-	const sleepTime = Math.ceil(Math.random() * 3) + 1;
+	const sleepTime = 300;
 
 	setTimeout(() => makeNeighbours(), sleepTime * 1000);
 };
