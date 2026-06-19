@@ -195,16 +195,46 @@ const sendFindNodeRequest = ({ address, port }, nid) => {
 	sendMessage({ a: { id, target: getRandomID() }, q: 'find_node', t, y: 'q' }, { address, port });
 };
 
+const TABLE_PROBE_BATCH = 50;
+
+const pickRandomFromTable = (count) => {
+	const all = Array.from(nodesTable.values());
+
+	if (all.length <= count) {
+		return all;
+	}
+	const picked = [];
+	const used = new Set();
+
+	while (picked.length < count && used.size < all.length) {
+		const idx = Math.floor(Math.random() * all.length);
+
+		if (!used.has(idx)) {
+			used.add(idx);
+			picked.push(all[idx]);
+		}
+	}
+	return picked;
+};
+
 const sendNodes = () => {
-	nodes.forEach((node) => {
+	let batch = nodes;
+	let fromTable = false;
+
+	if (batch.length === 0 && nodesTable.size > 0) {
+		batch = pickRandomFromTable(TABLE_PROBE_BATCH);
+		fromTable = true;
+	}
+	batch.forEach((node) => {
 		sendFindNodeRequest(node, node.nid);
 	});
-	const nodesCount = nodes.length;
+	const nodesCount = batch.length;
 
 	if (config.debug) {
-		console.log(`start find node from ${nodesCount}  nodes`);
+		console.log(`start find node from ${nodesCount}  nodes${fromTable ? ' (from table)' : ''}`);
 	}
 	nodes = [];
+	return fromTable;
 };
 const sendBootstrap = () => {
 	config.bootstrapNodes.forEach((node) => {
@@ -229,16 +259,20 @@ const sendBootstrapIfNeeded = () => {
 
 const makeNeighbours = () => {
 	try {
-		sendNodes();
+		const fromTable = sendNodes();
+
 		sendBootstrapIfNeeded();
+		const sleepTime = fromTable ? 5 : Math.ceil(Math.random() * 3) + 1;
+
+		setTimeout(() => makeNeighbours(), sleepTime * 1000);
 	} catch (error) {
 		if (config.debug) {
 			console.log(error);
 		}
-	}
-	const sleepTime = Math.ceil(Math.random() * 3) + 1;
+		const sleepTime = Math.ceil(Math.random() * 3) + 1;
 
-	setTimeout(() => makeNeighbours(), sleepTime * 1000);
+		setTimeout(() => makeNeighbours(), sleepTime * 1000);
+	}
 };
 
 const start = () => {
