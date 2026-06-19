@@ -216,14 +216,12 @@ const sendBootstrap = () => {
 };
 
 const BOOTSTRAP_INTERVAL = 5 * 60 * 1000;
-const NODES_LOW_WATERMARK = 50;
 let lastBootstrap = 0;
 
 const sendBootstrapIfNeeded = () => {
 	const now = Date.now();
-	const lowOnNodes = nodes.length < NODES_LOW_WATERMARK;
 
-	if (lowOnNodes || now - lastBootstrap >= BOOTSTRAP_INTERVAL) {
+	if (now - lastBootstrap >= BOOTSTRAP_INTERVAL) {
 		sendBootstrap();
 		lastBootstrap = now;
 	}
