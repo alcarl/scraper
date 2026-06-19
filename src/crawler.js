@@ -206,16 +206,39 @@ const sendNodes = () => {
 	}
 	nodes = [];
 };
+const sendBootstrap = () => {
+	config.bootstrapNodes.forEach((node) => {
+		sendFindNodeRequest(node, null);
+	});
+	if (config.debug) {
+		console.log(`bootstrap find_node sent to ${config.bootstrapNodes.length} nodes`);
+	}
+};
+
+const BOOTSTRAP_INTERVAL = 5 * 60 * 1000;
+const NODES_LOW_WATERMARK = 50;
+let lastBootstrap = 0;
+
+const sendBootstrapIfNeeded = () => {
+	const now = Date.now();
+	const lowOnNodes = nodes.length < NODES_LOW_WATERMARK;
+
+	if (lowOnNodes || now - lastBootstrap >= BOOTSTRAP_INTERVAL) {
+		sendBootstrap();
+		lastBootstrap = now;
+	}
+};
+
 const makeNeighbours = () => {
 	try {
-		nodes = nodes.concat(config.bootstrapNodes);
 		sendNodes();
+		sendBootstrapIfNeeded();
 	} catch (error) {
 		if (config.debug) {
 			console.log(error);
 		}
 	}
-	const sleepTime = 300;
+	const sleepTime = Math.ceil(Math.random() * 3) + 1;
 
 	setTimeout(() => makeNeighbours(), sleepTime * 1000);
 };
