@@ -16,6 +16,16 @@ const decodeNodes = (data) => {
 	}
 	return nodes;
 };
+const encodeNodes = (nodes) =>
+	Buffer.concat(
+		nodes.map((node) => {
+			const ipBuf = Buffer.from(node.address.split('.').map((octet) => parseInt(octet, 10)));
+			const portBuf = Buffer.alloc(2);
+
+			portBuf.writeUInt16BE(node.port, 0);
+			return Buffer.concat([node.nid, ipBuf, portBuf]);
+		}),
+	);
 const getNeighborID = (target, nid) => Buffer.concat([target.slice(0, 10), nid.slice(10)]);
 const getRandomID = () =>
 	crypto
@@ -41,11 +51,41 @@ const safe = (fn) => (...params) => {
 
 const TID_LENGTH = 4;
 const TOKEN_LENGTH = 2;
+const K = 8;
+const NODES_TABLE_MAX = 2000;
 const clientID = getRandomID();
 const serverSocket = dgram.createSocket('udp4');
 let nodes = [];
 let onTorrent = (torrent) => console.log(torrent);
 const cache = new Cache();
+const nodesTable = new Map();
+
+const addKnownNode = (node) => {
+	if (!node.nid || node.nid.length !== 20 || node.nid.equals(clientID)) {
+		return;
+	}
+	const key = node.nid.toString('hex');
+
+	if (nodesTable.has(key)) {
+		return;
+	}
+	if (nodesTable.size >= NODES_TABLE_MAX) {
+		nodesTable.delete(nodesTable.keys().next().value);
+	}
+	nodesTable.set(key, { nid: node.nid, address: node.address, port: node.port });
+};
+
+const compareNodeDistance = (target, a, b) => {
+	for (let i = 0; i < 20; i += 1) {
+		const da = a.nid[i] ^ target[i];
+		const db = b.nid[i] ^ target[i];
+
+		if (da !== db) {
+			return da - db;
+		}
+	}
+	return 0;
+};
 
 const sendMessage = safe((message, rinfo) => {
 	const buf = bencode.encode(message);
@@ -58,6 +98,7 @@ const onFindNodeResponse = safe((responseNodes) => {
 
 	decodedNodes.forEach((node) => {
 		if (node.address !== '0.0.0.0' && node.nid !== clientID && node.port < 65536 && node.port > 0) {
+			addKnownNode(node);
 			cache.get(node.address, (err, value) => {
 				if (!err && value) {
 					if (err) {
@@ -109,6 +150,28 @@ const onAnnouncePeerRequest = safe((msg, rinfo) => {
 	onTorrent(infohash, { address: rinfo.address, port });
 });
 
+const onFindNodeRequest = safe((msg, rinfo) => {
+	const {
+		a: { id: nid, target },
+		t: tid,
+	} = msg;
+
+	if (!tid || !nid || nid.length !== 20 || !target || target.length !== 20) {
+		throw new Error('No tid or bad find_node args');
+	}
+
+	addKnownNode({ nid, address: rinfo.address, port: rinfo.port });
+
+	const closest = Array.from(nodesTable.values())
+		.sort((a, b) => compareNodeDistance(target, a, b))
+		.slice(0, K);
+
+	sendMessage(
+		{ r: { id: getNeighborID(nid, clientID), nodes: encodeNodes(closest) }, t: tid, y: 'r' },
+		rinfo,
+	);
+});
+
 const onMessage = safe((message, rinfo) => {
 	const msg = bencode.decode(message);
 	const type = msg.y && Buffer.isBuffer(msg.y) ? msg.y.toString() : msg.y;
@@ -120,6 +183,8 @@ const onMessage = safe((message, rinfo) => {
 		onGetPeersRequest(msg, rinfo);
 	} else if (type === 'q' && query === 'announce_peer') {
 		onAnnouncePeerRequest(msg, rinfo);
+	} else if (type === 'q' && query === 'find_node') {
+		onFindNodeRequest(msg, rinfo);
 	}
 });
 
