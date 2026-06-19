@@ -13,7 +13,10 @@ const config = {
 	],
 	crawler: {
 		address: '0.0.0.0',
+		address6: '::',
+		enableIPv6: true,
 		port: 6881,
+		port6: 6881,
 	},
 	db: {
 		/*
