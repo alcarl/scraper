@@ -53,12 +53,39 @@ const TID_LENGTH = 4;
 const TOKEN_LENGTH = 2;
 const K = 8;
 const NODES_TABLE_MAX = 2000;
+const INFOHASH_TABLE_MAX = 50000;
+const SAMPLE_SIZE = 20;
+const SAMPLE_REQUEST_INTERVAL = 60 * 1000;
 const clientID = getRandomID();
 const serverSocket = dgram.createSocket('udp4');
 let nodes = [];
 let onTorrent = (torrent) => console.log(torrent);
 const cache = new Cache();
 const nodesTable = new Map();
+const infohashTable = new Map();
+
+const addInfohash = (infohash) => {
+	if (!infohash || infohash.length !== 20) return;
+	const key = infohash.toString('hex');
+	if (infohashTable.has(key)) return;
+	if (infohashTable.size >= INFOHASH_TABLE_MAX) {
+		infohashTable.delete(infohashTable.keys().next().value);
+	}
+	infohashTable.set(key, { infohash, discovered: Date.now() });
+};
+
+const getSampleInfohashes = (target) => {
+	const entries = Array.from(infohashTable.values());
+	entries.sort((a, b) => {
+		for (let i = 0; i < 20; i += 1) {
+			const da = a.infohash[i] ^ target[i];
+			const db = b.infohash[i] ^ target[i];
+			if (da !== db) return da - db;
+		}
+		return 0;
+	});
+	return entries.slice(0, SAMPLE_SIZE).map((e) => e.infohash);
+};
 
 const addKnownNode = (node) => {
 	if (!node.nid || node.nid.length !== 20 || node.nid.equals(clientID)) {
@@ -147,6 +174,7 @@ const onAnnouncePeerRequest = safe((msg, rinfo) => {
 
 	sendMessage({ r: { id: getNeighborID(nid, clientID) }, t: tid, y: 'r' }, rinfo);
 	// downloadTorrent({ address: rinfo.address, port }, infohash);
+	addInfohash(infohash);
 	onTorrent(infohash, { address: rinfo.address, port });
 });
 
@@ -172,19 +200,92 @@ const onFindNodeRequest = safe((msg, rinfo) => {
 	);
 });
 
+const onSampleInfohashesRequest = safe((msg, rinfo) => {
+	const {
+		a: { id: nid, target },
+		t: tid,
+	} = msg;
+
+	if (!tid || !nid || nid.length !== 20 || !target || target.length !== 20) {
+		throw new Error('No tid or bad sample_infohashes args');
+	}
+
+	addKnownNode({ nid, address: rinfo.address, port: rinfo.port });
+
+	const samples = getSampleInfohashes(target);
+	const closest = Array.from(nodesTable.values())
+		.sort((a, b) => compareNodeDistance(target, a, b))
+		.slice(0, K);
+
+	const response = {
+		r: {
+			id: getNeighborID(target, clientID),
+			samples: samples,
+			nodes: encodeNodes(closest),
+			interval: 1800,
+		},
+		t: tid,
+		y: 'r',
+	};
+
+	sendMessage(response, rinfo);
+
+	if (config.debug) {
+		console.log(`Responded to sample_infohashes from ${rinfo.address}:${rinfo.port} with ${samples.length} samples`);
+	}
+});
+
+const onSampleInfohashesResponse = safe((msg, rinfo) => {
+	if (!msg.r || !msg.r.samples) return;
+
+	const samples = msg.r.samples;
+	let newCount = 0;
+
+	if (Array.isArray(samples)) {
+		samples.forEach((infohash) => {
+			if (infohash && infohash.length === 20) {
+				const key = infohash.toString('hex');
+				if (!infohashTable.has(key)) {
+					addInfohash(infohash);
+					newCount += 1;
+					onTorrent(infohash, { address: rinfo.address, port: rinfo.port });
+				}
+			}
+		});
+	}
+
+	if (config.debug && newCount > 0) {
+		console.log(`sample_infohashes: discovered ${newCount} new infohashes from ${rinfo.address}:${rinfo.port}`);
+	}
+});
+
+const sendSampleInfohashesRequest = (node) => {
+	const t = getRandomID().slice(0, TID_LENGTH);
+	const target = getRandomID();
+
+	sendMessage(
+		{ a: { id: clientID, target }, q: 'sample_infohashes', t, y: 'q' },
+		{ address: node.address, port: node.port },
+	);
+};
+
 const onMessage = safe((message, rinfo) => {
 	const msg = bencode.decode(message);
 	const type = msg.y && Buffer.isBuffer(msg.y) ? msg.y.toString() : msg.y;
 	const query = msg.q && Buffer.isBuffer(msg.q) ? msg.q.toString() : msg.q;
 
-	if (type === 'r' && msg.r.nodes) {
-		onFindNodeResponse(msg.r.nodes);
-	} else if (type === 'q' && query === 'get_peers') {
+	if (type === 'q' && query === 'get_peers') {
 		onGetPeersRequest(msg, rinfo);
 	} else if (type === 'q' && query === 'announce_peer') {
 		onAnnouncePeerRequest(msg, rinfo);
 	} else if (type === 'q' && query === 'find_node') {
 		onFindNodeRequest(msg, rinfo);
+	} else if (type === 'q' && query === 'sample_infohashes') {
+		onSampleInfohashesRequest(msg, rinfo);
+	} else if (type === 'r' && msg.r.nodes) {
+		onFindNodeResponse(msg.r.nodes);
+	} else if (type === 'r' && msg.r.samples) {
+		onSampleInfohashesResponse(msg, rinfo);
 	}
 });
 
@@ -257,11 +358,30 @@ const sendBootstrapIfNeeded = () => {
 	}
 };
 
+let lastSampleRequest = 0;
+
+const sendSampleRequestsIfNeeded = () => {
+	const now = Date.now();
+
+	if (now - lastSampleRequest >= SAMPLE_REQUEST_INTERVAL && nodesTable.size > 0) {
+		const count = Math.min(10, nodesTable.size);
+		const nodes = pickRandomFromTable(count);
+
+		nodes.forEach((node) => sendSampleInfohashesRequest(node));
+		lastSampleRequest = now;
+
+		if (config.debug) {
+			console.log(`Sent sample_infohashes requests to ${nodes.length} nodes (infohashTable size: ${infohashTable.size})`);
+		}
+	}
+};
+
 const makeNeighbours = () => {
 	try {
 		const fromTable = sendNodes();
 
 		sendBootstrapIfNeeded();
+		sendSampleRequestsIfNeeded();
 		const sleepTime = fromTable ? 5 : Math.ceil(Math.random() * 3) + 1;
 
 		setTimeout(() => makeNeighbours(), sleepTime * 1000);
