@@ -306,6 +306,14 @@ const onMessage = safe((message, rinfo) => {
 		onSampleInfohashesResponse(msg, rinfo);
 	} else if (type === 'r' && msg.r.nodes) {
 		onFindNodeResponse(msg.r.nodes);
+	} else if (type === 'e') {
+		if (config.debug) {
+			console.log(`[sample] error response from ${rinfo.address}:${rinfo.port}: ${JSON.stringify(msg)}`);
+		}
+	} else {
+		if (config.debug) {
+			console.log(`[sample] unhandled message from ${rinfo.address}:${rinfo.port}: type=${type}, query=${query}, keys=${JSON.stringify(msg.r ? Object.keys(msg.r) : null)}`);
+		}
 	}
 });
 
