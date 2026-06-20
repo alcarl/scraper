@@ -88,7 +88,6 @@ const getSampleInfohashes = (target) => {
 	return entries.slice(0, SAMPLE_SIZE).map((e) => e.infohash);
 };
 
-let _addKnownNodeCount = 0;
 const addKnownNode = (node) => {
 	if (!node.nid || node.nid.length !== 20 || node.nid.equals(clientID)) {
 		return;
@@ -102,10 +101,6 @@ const addKnownNode = (node) => {
 		nodesTable.delete(nodesTable.keys().next().value);
 	}
 	nodesTable.set(key, { nid: node.nid, address: node.address, port: node.port });
-	_addKnownNodeCount += 1;
-	if (config.debug && _addKnownNodeCount % 100 === 0) {
-		console.log(`[sample] nodesTable added ${_addKnownNodeCount} nodes, current size=${nodesTable.size}`);
-	}
 };
 
 const compareNodeDistance = (target, a, b) => {
@@ -253,18 +248,9 @@ const parseCompactSamples = (data) => {
 };
 
 const onSampleInfohashesResponse = safe((msg, rinfo) => {
-	if (!msg.r) return;
+	if (!msg.r || !msg.r.samples) return;
 
-	if (config.debug) {
-		const hasSamples = !!msg.r.samples;
-		const samplesType = msg.r.samples ? typeof msg.r.samples + ':' + (Buffer.isBuffer(msg.r.samples) ? msg.r.samples.length : Array.isArray(msg.r.samples) ? msg.r.samples.length : JSON.stringify(msg.r.samples).slice(0, 50)) : 'none';
-		console.log(`[sample] response from ${rinfo.address}:${rinfo.port}: has_samples=${hasSamples}, samples_type=${samplesType}`);
-	}
-
-	if (!msg.r.samples) return;
-
-	const samplesData = msg.r.samples;
-	const samples = parseCompactSamples(samplesData);
+	const samples = parseCompactSamples(msg.r.samples);
 	let newCount = 0;
 
 	samples.forEach((infohash) => {
@@ -278,7 +264,9 @@ const onSampleInfohashesResponse = safe((msg, rinfo) => {
 		}
 	});
 
-	console.log(`sample_infohashes response from ${rinfo.address}:${rinfo.port}: ${samples.length} samples, ${newCount} new`);
+	if (config.debug && newCount > 0) {
+		console.log(`[BEP-52] Got ${samples.length} samples (${newCount} new) from ${rinfo.address}:${rinfo.port}`);
+	}
 });
 
 const sendSampleInfohashesRequest = (node) => {
@@ -314,13 +302,11 @@ const onMessage = safe((message, rinfo) => {
 		if (tid && nid && nid.length === 20) {
 			sendMessage({ r: { id: getNeighborID(nid, clientID) }, t: tid, y: 'r' }, rinfo);
 		}
+	} else if (type === 'q' && query === 'vote') {
+		// Bittorrent extension protocol, not needed for scraper, silently ignore
 	} else if (type === 'e') {
 		if (config.debug) {
 			console.log(`[sample] error response from ${rinfo.address}:${rinfo.port}: ${JSON.stringify(msg)}`);
-		}
-	} else {
-		if (config.debug) {
-			console.log(`[sample] unhandled message from ${rinfo.address}:${rinfo.port}: type=${type}, query=${query}, keys=${JSON.stringify(msg.r ? Object.keys(msg.r) : null)}`);
 		}
 	}
 });
@@ -399,8 +385,6 @@ let lastSampleRequest = 0;
 const sendSampleRequestsIfNeeded = () => {
 	const now = Date.now();
 
-	console.log(`[sample] CHECK: nodesTable.size=${nodesTable.size}, diff=${now - lastSampleRequest}ms, interval=${SAMPLE_REQUEST_INTERVAL}ms`);
-
 	if (now - lastSampleRequest >= SAMPLE_REQUEST_INTERVAL && nodesTable.size > 0) {
 		const count = Math.min(10, nodesTable.size);
 		const allNodes = Array.from(nodesTable.values());
@@ -409,16 +393,15 @@ const sendSampleRequestsIfNeeded = () => {
 		const shuffledNormal = normalNodes.sort(() => Math.random() - 0.5);
 		const selected = bep52NodesList.slice(0, count).concat(shuffledNormal.slice(0, count - bep52NodesList.length)).slice(0, count);
 
-		console.log(`[sample] SENDING sample_infohashes to ${selected.length} nodes (${bep52NodesList.length} BEP-52 capable)`);
-		selected.forEach((node) => {
-			console.log(`[sample]   -> ${node.address}:${node.port}${bep52Nodes.has(`${node.address}:${node.port}`) ? ' [BEP-52]' : ''}`);
-			sendSampleInfohashesRequest(node);
-		});
+		if (config.debug) {
+			console.log(`[BEP-52] Sending sample_infohashes to ${selected.length} nodes (${bep52NodesList.length} BEP-52 capable)`);
+		}
+		selected.forEach((node) => sendSampleInfohashesRequest(node));
 		lastSampleRequest = now;
 
-		console.log(`[sample] Sent sample_infohashes requests to ${selected.length} nodes (infohashTable size: ${infohashTable.size}, bep52Nodes size: ${bep52Nodes.size})`);
-	} else {
-		console.log(`[sample] SKIP: diff=${now - lastSampleRequest}ms, size=${nodesTable.size}`);
+		if (config.debug) {
+			console.log(`[BEP-52] Requests sent (infohashTable: ${infohashTable.size}, bep52Nodes: ${bep52Nodes.size})`);
+		}
 	}
 };
 
