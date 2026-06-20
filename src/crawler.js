@@ -87,6 +87,7 @@ const getSampleInfohashes = (target) => {
 	return entries.slice(0, SAMPLE_SIZE).map((e) => e.infohash);
 };
 
+let _addKnownNodeCount = 0;
 const addKnownNode = (node) => {
 	if (!node.nid || node.nid.length !== 20 || node.nid.equals(clientID)) {
 		return;
@@ -100,8 +101,9 @@ const addKnownNode = (node) => {
 		nodesTable.delete(nodesTable.keys().next().value);
 	}
 	nodesTable.set(key, { nid: node.nid, address: node.address, port: node.port });
-	if (config.debug) {
-		console.log(`[sample] addKnownNode: added ${node.address}:${node.port}, nodesTable.size=${nodesTable.size}`);
+	_addKnownNodeCount += 1;
+	if (config.debug && _addKnownNodeCount % 100 === 0) {
+		console.log(`[sample] nodesTable added ${_addKnownNodeCount} nodes, current size=${nodesTable.size}`);
 	}
 };
 
@@ -375,22 +377,22 @@ let lastSampleRequest = 0;
 const sendSampleRequestsIfNeeded = () => {
 	const now = Date.now();
 
-	if (config.debug) {
-		console.log(`[sample] nodesTable.size=${nodesTable.size}, lastSampleRequest=${now - lastSampleRequest}ms ago, interval=${SAMPLE_REQUEST_INTERVAL}ms`);
-	}
+	console.log(`[sample] CHECK: nodesTable.size=${nodesTable.size}, diff=${now - lastSampleRequest}ms, interval=${SAMPLE_REQUEST_INTERVAL}ms`);
 
 	if (now - lastSampleRequest >= SAMPLE_REQUEST_INTERVAL && nodesTable.size > 0) {
 		const count = Math.min(10, nodesTable.size);
 		const sampleNodes = pickRandomFromTable(count);
 
-		sampleNodes.forEach((node) => sendSampleInfohashesRequest(node));
+		console.log(`[sample] SENDING sample_infohashes to ${sampleNodes.length} nodes`);
+		sampleNodes.forEach((node) => {
+			console.log(`[sample]   -> ${node.address}:${node.port}`);
+			sendSampleInfohashesRequest(node);
+		});
 		lastSampleRequest = now;
 
-		if (config.debug) {
-			console.log(`Sent sample_infohashes requests to ${sampleNodes.length} nodes (infohashTable size: ${infohashTable.size})`);
-		}
-	} else if (config.debug && nodesTable.size === 0) {
-		console.log('[sample] nodesTable is empty, cannot send sample_infohashes requests yet');
+		console.log(`[sample] Sent sample_infohashes requests to ${sampleNodes.length} nodes (infohashTable size: ${infohashTable.size})`);
+	} else {
+		console.log(`[sample] SKIP: diff=${now - lastSampleRequest}ms, size=${nodesTable.size}`);
 	}
 };
 
@@ -399,13 +401,19 @@ const makeNeighbours = () => {
 		const fromTable = sendNodes();
 
 		sendBootstrapIfNeeded();
-		sendSampleRequestsIfNeeded();
+		try {
+			sendSampleRequestsIfNeeded();
+		} catch (err) {
+			if (config.debug) {
+				console.log('[sample] sendSampleRequestsIfNeeded error:', err);
+			}
+		}
 		const sleepTime = fromTable ? 5 : Math.ceil(Math.random() * 3) + 1;
 
 		setTimeout(() => makeNeighbours(), sleepTime * 1000);
 	} catch (error) {
 		if (config.debug) {
-			console.log(error);
+			console.log('[sample] makeNeighbours error:', error);
 		}
 		const sleepTime = Math.ceil(Math.random() * 3) + 1;
 
