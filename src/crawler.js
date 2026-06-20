@@ -71,7 +71,8 @@ let onTorrent = (torrent) => console.log(torrent);
 const cache = new Cache();
 const nodesTable = new Map();
 const infohashTable = new Map();
-const bep52Nodes = new Set();
+const bep52Nodes = new Map(); // "ip:port" -> node obj
+let sampleResponseCounter = 0; // BEP-52 response log counter
 
 const addInfohash = (infohash) => {
 	if (!infohash || infohash.length !== 20) return;
@@ -220,7 +221,7 @@ const onSampleInfohashesRequest = safe((msg, rinfo) => {
 	}
 
 	addKnownNode({ nid, address: rinfo.address, port: rinfo.port });
-	bep52Nodes.add(`${rinfo.address}:${rinfo.port}`);
+	bep52Nodes.set(`${rinfo.address}:${rinfo.port}`, { nid, address: rinfo.address, port: rinfo.port });
 
 	const samples = getSampleInfohashes(target);
 	const compactSamples = Buffer.concat(samples);
@@ -242,7 +243,10 @@ const onSampleInfohashesRequest = safe((msg, rinfo) => {
 	sendMessage(response, rinfo);
 
 	if (config.debug) {
-		console.log(`Responded to sample_infohashes from ${rinfo.address}:${rinfo.port} with ${samples.length} samples`);
+		sampleResponseCounter += 1;
+		if (sampleResponseCounter % 20 === 0) {
+			console.log(`[BEP-52] Responded to sample_infohashes ${sampleResponseCounter} times, last: ${rinfo.address}:${rinfo.port} with ${samples.length} samples`);
+		}
 	}
 });
 
@@ -393,16 +397,23 @@ let lastSampleRequest = 0;
 const sendSampleRequestsIfNeeded = () => {
 	const now = Date.now();
 
-	if (now - lastSampleRequest >= SAMPLE_REQUEST_INTERVAL && nodesTable.size > 0) {
-		const count = Math.min(10, nodesTable.size);
-		const allNodes = Array.from(nodesTable.values());
-		const bep52NodesList = allNodes.filter((n) => bep52Nodes.has(`${n.address}:${n.port}`));
-		const normalNodes = allNodes.filter((n) => !bep52Nodes.has(`${n.address}:${n.port}`));
-		const shuffledNormal = normalNodes.sort(() => Math.random() - 0.5);
-		const selected = bep52NodesList.slice(0, count).concat(shuffledNormal.slice(0, count - bep52NodesList.length)).slice(0, count);
+	if (now - lastSampleRequest >= SAMPLE_REQUEST_INTERVAL && (bep52Nodes.size > 0 || nodesTable.size > 0)) {
+		const count = 10;
+		// 优先从 bep52Nodes 中选取，并随机打乱
+		const bep52List = Array.from(bep52Nodes.values());
+		const shuffledBep52 = bep52List.sort(() => Math.random() - 0.5);
+		let selected = shuffledBep52.slice(0, count);
+
+		// 不足部分从路由表补充（排除已在 bep52Nodes 的节点）
+		if (selected.length < count && nodesTable.size > 0) {
+			const normalNodes = Array.from(nodesTable.values())
+				.filter((n) => !bep52Nodes.has(`${n.address}:${n.port}`))
+				.sort(() => Math.random() - 0.5);
+			selected = selected.concat(normalNodes.slice(0, count - selected.length));
+		}
 
 		if (config.debug) {
-			console.log(`[BEP-52] Sending sample_infohashes to ${selected.length} nodes (${bep52NodesList.length} BEP-52 capable)`);
+			console.log(`[BEP-52] Sending sample_infohashes to ${selected.length} nodes (${bep52List.length} BEP-52 capable)`);
 		}
 		selected.forEach((node) => sendSampleInfohashesRequest(node));
 		lastSampleRequest = now;
