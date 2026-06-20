@@ -49,7 +49,7 @@ const safe = (fn) => (...params) => {
 	return undefined;
 };
 
-const TID_LENGTH = 2;
+const TID_LENGTH = 6;
 const TOKEN_LENGTH = 2;
 
 const getRandomTID = () => {
