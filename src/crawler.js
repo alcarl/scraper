@@ -49,7 +49,7 @@ const safe = (fn) => (...params) => {
 	return undefined;
 };
 
-const TID_LENGTH = 4;
+const TID_LENGTH = 2;
 const TOKEN_LENGTH = 2;
 
 const getRandomTID = () => {
@@ -317,8 +317,17 @@ const onMessage = safe((message, rinfo) => {
 	} else if (type === 'q' && query === 'vote') {
 		// Bittorrent extension protocol, not needed for scraper, silently ignore
 	} else if (type === 'e') {
+		const errCode = Array.isArray(msg.e) ? msg.e[0] : null;
+		const key = `${rinfo.address}:${rinfo.port}`;
+		if (errCode === 204 && bep52Nodes.has(key)) {
+			// Node does not support sample_infohashes, remove from bep52Nodes
+			bep52Nodes.delete(key);
+			if (config.debug) {
+				console.log(`[BEP-52] Removed ${key} from bep52Nodes (204 Method Unknown)`);
+			}
+		}
 		if (config.debug) {
-			console.log(`[sample] error response from ${rinfo.address}:${rinfo.port}: ${JSON.stringify(msg)}`);
+			console.log(`[BEP-52] error response from ${rinfo.address}:${rinfo.port} (code ${errCode}): ${JSON.stringify(msg)}`);
 		}
 	}
 });
