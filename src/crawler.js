@@ -51,6 +51,15 @@ const safe = (fn) => (...params) => {
 
 const TID_LENGTH = 4;
 const TOKEN_LENGTH = 2;
+
+const getRandomTID = () => {
+	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+	let result = '';
+	for (let i = 0; i < TID_LENGTH; i += 1) {
+		result += chars[Math.floor(Math.random() * chars.length)];
+	}
+	return result;
+};
 const K = 8;
 const NODES_TABLE_MAX = 2000;
 const INFOHASH_TABLE_MAX = 50000;
@@ -270,7 +279,7 @@ const onSampleInfohashesResponse = safe((msg, rinfo) => {
 });
 
 const sendSampleInfohashesRequest = (node) => {
-	const t = getRandomID().slice(0, TID_LENGTH);
+	const t = getRandomTID();
 	const target = getRandomID();
 
 	sendMessage(
@@ -312,7 +321,7 @@ const onMessage = safe((message, rinfo) => {
 });
 
 const sendFindNodeRequest = ({ address, port }, nid) => {
-	const t = getRandomID().slice(0, TID_LENGTH);
+	const t = getRandomTID();
 	const id = nid ? getNeighborID(nid, clientID) : clientID;
 
 	sendMessage({ a: { id, target: getRandomID() }, q: 'find_node', t, y: 'q' }, { address, port });
