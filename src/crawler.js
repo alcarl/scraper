@@ -63,6 +63,7 @@ let onTorrent = (torrent) => console.log(torrent);
 const cache = new Cache();
 const nodesTable = new Map();
 const infohashTable = new Map();
+const bep52Nodes = new Set();
 
 const addInfohash = (infohash) => {
 	if (!infohash || infohash.length !== 20) return;
@@ -216,6 +217,7 @@ const onSampleInfohashesRequest = safe((msg, rinfo) => {
 	}
 
 	addKnownNode({ nid, address: rinfo.address, port: rinfo.port });
+	bep52Nodes.add(`${rinfo.address}:${rinfo.port}`);
 
 	const samples = getSampleInfohashes(target);
 	const compactSamples = Buffer.concat(samples);
@@ -306,6 +308,12 @@ const onMessage = safe((message, rinfo) => {
 		onSampleInfohashesResponse(msg, rinfo);
 	} else if (type === 'r' && msg.r.nodes) {
 		onFindNodeResponse(msg.r.nodes);
+	} else if (type === 'q' && query === 'ping') {
+		const tid = msg.t && Buffer.isBuffer(msg.t) ? msg.t.toString() : msg.t;
+		const nid = msg.a && msg.a.id;
+		if (tid && nid && nid.length === 20) {
+			sendMessage({ r: { id: getNeighborID(nid, clientID) }, t: tid, y: 'r' }, rinfo);
+		}
 	} else if (type === 'e') {
 		if (config.debug) {
 			console.log(`[sample] error response from ${rinfo.address}:${rinfo.port}: ${JSON.stringify(msg)}`);
@@ -395,16 +403,20 @@ const sendSampleRequestsIfNeeded = () => {
 
 	if (now - lastSampleRequest >= SAMPLE_REQUEST_INTERVAL && nodesTable.size > 0) {
 		const count = Math.min(10, nodesTable.size);
-		const sampleNodes = pickRandomFromTable(count);
+		const allNodes = Array.from(nodesTable.values());
+		const bep52NodesList = allNodes.filter((n) => bep52Nodes.has(`${n.address}:${n.port}`));
+		const normalNodes = allNodes.filter((n) => !bep52Nodes.has(`${n.address}:${n.port}`));
+		const shuffledNormal = normalNodes.sort(() => Math.random() - 0.5);
+		const selected = bep52NodesList.slice(0, count).concat(shuffledNormal.slice(0, count - bep52NodesList.length)).slice(0, count);
 
-		console.log(`[sample] SENDING sample_infohashes to ${sampleNodes.length} nodes`);
-		sampleNodes.forEach((node) => {
-			console.log(`[sample]   -> ${node.address}:${node.port}`);
+		console.log(`[sample] SENDING sample_infohashes to ${selected.length} nodes (${bep52NodesList.length} BEP-52 capable)`);
+		selected.forEach((node) => {
+			console.log(`[sample]   -> ${node.address}:${node.port}${bep52Nodes.has(`${node.address}:${node.port}`) ? ' [BEP-52]' : ''}`);
 			sendSampleInfohashesRequest(node);
 		});
 		lastSampleRequest = now;
 
-		console.log(`[sample] Sent sample_infohashes requests to ${sampleNodes.length} nodes (infohashTable size: ${infohashTable.size})`);
+		console.log(`[sample] Sent sample_infohashes requests to ${selected.length} nodes (infohashTable size: ${infohashTable.size}, bep52Nodes size: ${bep52Nodes.size})`);
 	} else {
 		console.log(`[sample] SKIP: diff=${now - lastSampleRequest}ms, size=${nodesTable.size}`);
 	}
