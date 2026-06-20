@@ -128,6 +128,11 @@ const compareNodeDistance = (target, a, b) => {
 const sendMessage = safe((message, rinfo) => {
 	const buf = bencode.encode(message);
 
+	// Debug: 打印 sample_infohashes 请求的实际编码结果
+	if (config.debug && message.q === 'sample_infohashes') {
+		console.log(`[BEP-52] DEBUG send: t=${JSON.stringify(message.t)}, t_type=${typeof message.t}, buf_t_hex=${buf.toString('hex')}`);
+	}
+
 	serverSocket.send(buf, 0, buf.length, rinfo.port, rinfo.address);
 });
 
