@@ -251,7 +251,15 @@ const parseCompactSamples = (data) => {
 };
 
 const onSampleInfohashesResponse = safe((msg, rinfo) => {
-	if (!msg.r || !msg.r.samples) return;
+	if (!msg.r) return;
+
+	if (config.debug) {
+		const hasSamples = !!msg.r.samples;
+		const samplesType = msg.r.samples ? typeof msg.r.samples + ':' + (Buffer.isBuffer(msg.r.samples) ? msg.r.samples.length : Array.isArray(msg.r.samples) ? msg.r.samples.length : JSON.stringify(msg.r.samples).slice(0, 50)) : 'none';
+		console.log(`[sample] response from ${rinfo.address}:${rinfo.port}: has_samples=${hasSamples}, samples_type=${samplesType}`);
+	}
+
+	if (!msg.r.samples) return;
 
 	const samplesData = msg.r.samples;
 	const samples = parseCompactSamples(samplesData);
@@ -268,9 +276,7 @@ const onSampleInfohashesResponse = safe((msg, rinfo) => {
 		}
 	});
 
-	if (config.debug) {
-		console.log(`sample_infohashes response from ${rinfo.address}:${rinfo.port}: ${samples.length} samples, ${newCount} new`);
-	}
+	console.log(`sample_infohashes response from ${rinfo.address}:${rinfo.port}: ${samples.length} samples, ${newCount} new`);
 });
 
 const sendSampleInfohashesRequest = (node) => {
