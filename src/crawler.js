@@ -53,9 +53,10 @@ const TID_LENGTH = 6;
 const TOKEN_LENGTH = 2;
 
 const getRandomTID = () => {
+	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
 	const buf = Buffer.alloc(TID_LENGTH);
 	for (let i = 0; i < TID_LENGTH; i += 1) {
-		buf[i] = 0x30 + Math.floor(Math.random() * 0x4a);
+		buf[i] = chars.charCodeAt(Math.floor(Math.random() * chars.length));
 	}
 	return buf;
 };
