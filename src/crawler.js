@@ -53,12 +53,11 @@ const TID_LENGTH = 4;
 const TOKEN_LENGTH = 2;
 
 const getRandomTID = () => {
-	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-	let result = '';
+	const buf = Buffer.alloc(TID_LENGTH);
 	for (let i = 0; i < TID_LENGTH; i += 1) {
-		result += chars[Math.floor(Math.random() * chars.length)];
+		buf[i] = 0x30 + Math.floor(Math.random() * 0x4a);
 	}
-	return result;
+	return buf;
 };
 const K = 8;
 const NODES_TABLE_MAX = 2000;
