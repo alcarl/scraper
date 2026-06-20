@@ -100,6 +100,9 @@ const addKnownNode = (node) => {
 		nodesTable.delete(nodesTable.keys().next().value);
 	}
 	nodesTable.set(key, { nid: node.nid, address: node.address, port: node.port });
+	if (config.debug) {
+		console.log(`[sample] addKnownNode: added ${node.address}:${node.port}, nodesTable.size=${nodesTable.size}`);
+	}
 };
 
 const compareNodeDistance = (target, a, b) => {
@@ -213,6 +216,7 @@ const onSampleInfohashesRequest = safe((msg, rinfo) => {
 	addKnownNode({ nid, address: rinfo.address, port: rinfo.port });
 
 	const samples = getSampleInfohashes(target);
+	const compactSamples = Buffer.concat(samples);
 	const closest = Array.from(nodesTable.values())
 		.sort((a, b) => compareNodeDistance(target, a, b))
 		.slice(0, K);
@@ -220,7 +224,7 @@ const onSampleInfohashesRequest = safe((msg, rinfo) => {
 	const response = {
 		r: {
 			id: getNeighborID(target, clientID),
-			samples: samples,
+			samples: compactSamples,
 			nodes: encodeNodes(closest),
 			interval: 1800,
 		},
@@ -235,27 +239,35 @@ const onSampleInfohashesRequest = safe((msg, rinfo) => {
 	}
 });
 
+const parseCompactSamples = (data) => {
+	if (!data || !Buffer.isBuffer(data)) return [];
+	const samples = [];
+	for (let i = 0; i + 20 <= data.length; i += 20) {
+		samples.push(data.slice(i, i + 20));
+	}
+	return samples;
+};
+
 const onSampleInfohashesResponse = safe((msg, rinfo) => {
 	if (!msg.r || !msg.r.samples) return;
 
-	const samples = msg.r.samples;
+	const samplesData = msg.r.samples;
+	const samples = parseCompactSamples(samplesData);
 	let newCount = 0;
 
-	if (Array.isArray(samples)) {
-		samples.forEach((infohash) => {
-			if (infohash && infohash.length === 20) {
-				const key = infohash.toString('hex');
-				if (!infohashTable.has(key)) {
-					addInfohash(infohash);
-					newCount += 1;
-					onTorrent(infohash, { address: rinfo.address, port: rinfo.port });
-				}
+	samples.forEach((infohash) => {
+		if (infohash && infohash.length === 20) {
+			const key = infohash.toString('hex');
+			if (!infohashTable.has(key)) {
+				addInfohash(infohash);
+				newCount += 1;
+				onTorrent(infohash, { address: rinfo.address, port: rinfo.port });
 			}
-		});
-	}
+		}
+	});
 
-	if (config.debug && newCount > 0) {
-		console.log(`sample_infohashes: discovered ${newCount} new infohashes from ${rinfo.address}:${rinfo.port}`);
+	if (config.debug) {
+		console.log(`sample_infohashes response from ${rinfo.address}:${rinfo.port}: ${samples.length} samples, ${newCount} new`);
 	}
 });
 
@@ -282,10 +294,10 @@ const onMessage = safe((message, rinfo) => {
 		onFindNodeRequest(msg, rinfo);
 	} else if (type === 'q' && query === 'sample_infohashes') {
 		onSampleInfohashesRequest(msg, rinfo);
-	} else if (type === 'r' && msg.r.nodes) {
-		onFindNodeResponse(msg.r.nodes);
 	} else if (type === 'r' && msg.r.samples) {
 		onSampleInfohashesResponse(msg, rinfo);
+	} else if (type === 'r' && msg.r.nodes) {
+		onFindNodeResponse(msg.r.nodes);
 	}
 });
 
@@ -363,16 +375,22 @@ let lastSampleRequest = 0;
 const sendSampleRequestsIfNeeded = () => {
 	const now = Date.now();
 
+	if (config.debug) {
+		console.log(`[sample] nodesTable.size=${nodesTable.size}, lastSampleRequest=${now - lastSampleRequest}ms ago, interval=${SAMPLE_REQUEST_INTERVAL}ms`);
+	}
+
 	if (now - lastSampleRequest >= SAMPLE_REQUEST_INTERVAL && nodesTable.size > 0) {
 		const count = Math.min(10, nodesTable.size);
-		const nodes = pickRandomFromTable(count);
+		const sampleNodes = pickRandomFromTable(count);
 
-		nodes.forEach((node) => sendSampleInfohashesRequest(node));
+		sampleNodes.forEach((node) => sendSampleInfohashesRequest(node));
 		lastSampleRequest = now;
 
 		if (config.debug) {
-			console.log(`Sent sample_infohashes requests to ${nodes.length} nodes (infohashTable size: ${infohashTable.size})`);
+			console.log(`Sent sample_infohashes requests to ${sampleNodes.length} nodes (infohashTable size: ${infohashTable.size})`);
 		}
+	} else if (config.debug && nodesTable.size === 0) {
+		console.log('[sample] nodesTable is empty, cannot send sample_infohashes requests yet');
 	}
 };
 
