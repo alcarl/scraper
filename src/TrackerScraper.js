@@ -65,7 +65,7 @@ class TrackerScraper {
     }
 
     // 2. 握手成功后，发送伪装的 Announce 请求索要 Peer 列表
-    sendAnnounce(connectionId, ip, port) {
+    sendAnnounce(connectionId, ip, port, matchedHash, transactionId) {
         const packet = Buffer.alloc(98);
         connectionId.copy(packet, 0);                 // Connection ID
         packet.writeInt32BE(1, 8);                    // Action = 1 (announce)
