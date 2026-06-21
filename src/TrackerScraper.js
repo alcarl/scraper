@@ -1,3 +1,4 @@
+const config = require('./../config'); 
 const dgram = require('dgram');
 const crypto = require('crypto');
 
