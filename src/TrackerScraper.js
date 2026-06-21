@@ -60,7 +60,7 @@ class TrackerScraper {
         }
         // 如果是 Announce 的回应 (包含我们要的 Peer 列表)
         else if (action === 1) {
-            this.parsePeers(msg.slice(20)); // 前20字节是头信息，后面全是紧凑的 IP:Port
+            this.parsePeers(msg.slice(20),rinfo); // 前20字节是头信息，后面全是紧凑的 IP:Port
         }
     }
 
@@ -90,7 +90,7 @@ class TrackerScraper {
     }
 
     // 3. 解析二进制紧凑 Peer 列表，并喂给你的 DHT 爬虫
-    parsePeers(peersBuffer) {
+    parsePeers(peersBuffer,rinfo) {
         let peerCount = 0; // 新增一个计数器
         // 紧凑模式下，每 6 字节代表一个 Peer（4字节 IP + 2字节 Port）
         for (let i = 0; i + 6 <= peersBuffer.length; i += 6) {
@@ -112,7 +112,7 @@ class TrackerScraper {
 
             // ✅ 打印打捞战果
         if (config.debug && peerCount > 0) {
-            console.log(`[Tracker] 🎉 成功打捞！从该中心斩获了 ${peerCount} 个公网活 Peer IP`);
+            console.log(`[Tracker] 🎉 成功打捞！从该中心 [${rinfo.address}:${rinfo.port}] 斩获了 ${peerCount} 个公网活 Peer IP`);
         }
     }
 }
