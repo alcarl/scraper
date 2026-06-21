@@ -546,16 +546,28 @@ const scraper = new TrackerScraper((rawNode) => {
 
 // 2. 建立一个定时捞取公开 Tracker 的定时任务（比如每 5 分钟轮询一次公开 Tracker 列表）
 const startTrackerGet = () => {
-    // ✅ 1. 动态获取你爬虫库里当前最新抓到的那个真实 infohash
-    let latestLiveHash = null;
+    // 1. 建立一个存放待查询种子的数组
+    let targetHashes = [];
+
     if (infohashTable && infohashTable.size > 0) {
-        // 获取 Map 最后一个放入的值（即最新的）
+        // 将 Map 转换为数组（由于之前优化了分批淘汰，此时转数组的频率极低，完全不影响性能）
         const entries = Array.from(infohashTable.values());
-        const lastEntry = entries[entries.length - 1];
-        if (lastEntry && lastEntry.infohash) {
-            latestLiveHash = lastEntry.infohash;
-        }
+        
+        // 💡 核心改动：截取最后放入的 5 个最新、最鲜活的种子
+        const batchEntries = entries.slice(-5); 
+        targetHashes = batchEntries.map(e => e.infohash);
     }
+
+    // 2. 如果库里种子不够 5 个（比如刚开机），用常青的热门 Hash 把缺口补齐，确保每次火力全开
+    const backupHashes = [
+        Buffer.from('cb84ccc10d1e2e15097a40becb39a835b57d0712', 'hex'), // Ubuntu
+        Buffer.from('2f1e63a8a3a9bf0c9103e6f990924b89e7c5b651', 'hex'), // Debian
+        Buffer.from('74cd4943fcfd43da2d34a4253db93d4899c7503f', 'hex')  // Arch Linux
+    ];
+    while (targetHashes.length < 5) {
+        targetHashes.push(backupHashes[targetHashes.length % backupHashes.length]);
+    }
+
     // 工业生产中，你可以先用 axios/fetch 下载 https://github.io
     // 这里我们用几个全网最常青、最稳定的公开高吞吐 UDP Tracker 作为演示示例：
     const publicTrackers = [
@@ -564,9 +576,12 @@ const startTrackerGet = () => {
         { ip: '211.75.205.188', port: 6969 }   // open.stealth.si
     ];
 
+    // 4. ✅ 饱和式打捞：对每个 Tracker，把 5 个不同的热门种子连续发射过去
     publicTrackers.forEach(tracker => {
-        // 向这些大型指挥中心索要公网 Peer
-        scraper.scrape(tracker.ip, tracker.port, latestLiveHash);
+        targetHashes.forEach(hash => {
+            // 异步并发，互不干扰
+            scraper.scrape(tracker.host, tracker.port, hash);
+        });
     });
 };
 

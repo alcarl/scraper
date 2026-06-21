@@ -6,7 +6,10 @@ class TrackerScraper {
     constructor(addDHTNodeCallback) {
         this.client = dgram.createSocket('udp4');
         this.addDHTNodeCallback = addDHTNodeCallback; // 回调你的 addKnownNode 或 bep52Nodes.set
-        
+        // 💡 新增：建立一个内存中的轻量隐式事务队列
+        // 专门用来映射: "4字节的随机事务ID" -> "它当时对应的 20字节 infohash"
+        this.txMap = new Map();
+
         this.client.on('message', (msg, rinfo) => this.handleResponse(msg, rinfo));
         this.client.on('error', () => {}); // 忽略部分 Tracker 的网络错误
     }
@@ -19,7 +22,15 @@ class TrackerScraper {
         // 1. 构造 Connection Request (BEP-15 握手)
         const connectionId = Buffer.from('0000041727101980', 'hex'); // 协议固定常量
         const action = 0; // 0 代表 connect
+        // 生成唯一的 4 字节事务 ID
         const transactionId = crypto.randomBytes(4);
+        const txKey = transactionId.toString('hex');
+
+        // ✅ 将这个种子临时存入事务字典中，跟这个 ID 死死绑定
+        this.txMap.set(txKey, infohash);
+
+        // 定时清理过期的事务，防止内存泄露
+        setTimeout(() => this.txMap.delete(txKey), 15 * 1000);
 
         const packet = Buffer.alloc(16);
         connectionId.copy(packet, 0);
@@ -34,11 +45,18 @@ class TrackerScraper {
     handleResponse(msg, rinfo) {
         if (msg.length < 8) return;
         const action = msg.readInt32BE(0);
+        // 提取对方回给我们的 4 字节 Transaction ID
+        const transactionId = msg.slice(4, 8);
+        const txKey = transactionId.toString('hex');
 
         // 如果是 Connect 的回应
         if (action === 0) {
             const connectionId = msg.slice(8, 16);
-            this.sendAnnounce(connectionId, rinfo.address, rinfo.port);
+            // ✅ 从事务字典里把这个 ID 专属的那个 infohash 掏出来，传给第二阶段
+            const matchedHash = this.txMap.get(txKey);
+            this.sendAnnounce(connectionId, rinfo.address, rinfo.port, matchedHash, transactionId);
+            
+            this.txMap.delete(txKey); // 功成身退，立刻删除
         }
         // 如果是 Announce 的回应 (包含我们要的 Peer 列表)
         else if (action === 1) {
@@ -51,10 +69,11 @@ class TrackerScraper {
         const packet = Buffer.alloc(98);
         connectionId.copy(packet, 0);                 // Connection ID
         packet.writeInt32BE(1, 8);                    // Action = 1 (announce)
-        crypto.randomBytes(4).copy(packet, 12);       // Transaction ID
+        // 保持 Transaction ID 一致
+        transactionId.copy(packet, 12);       
 
-        // ✅ 优化：如果有传入的真实 Hash 就用真实的，没有就用常青款 Ubuntu 备用 Hash 垫底
-        const targetHash = this.currentTargetHash || Buffer.from('cb84ccc10d1e2e15097a40becb39a835b57d0712', 'hex');
+        // ✅ 完美分流：每个并发请求使用的都是它自己对应的那个精准种子
+        const targetHash = matchedHash || Buffer.from('cb84ccc10d1e2e15097a40becb39a835b57d0712', 'hex');
         targetHash.copy(packet, 16);
 
         crypto.randomBytes(20).copy(packet, 36);      // Peer ID
