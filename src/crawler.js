@@ -126,6 +126,12 @@ const compareNodeDistance = (target, a, b) => {
 };
 
 const sendMessage = safe((message, rinfo) => {
+	// 【核心修复】：如果发现 message.t 是字符串（通常是复用别人请求里的 t 导致的）
+	// 必须强制使用 'binary' (latin1) 编码将其还原为原始字节 Buffer，绝不使用默认的 utf-8
+	if (typeof message.t === 'string') {
+		message.t = Buffer.from(message.t, 'binary');
+	}
+		
 	const buf = bencode.encode(message);
 
 	// Debug: 打印 sample_infohashes 请求的实际编码结果
