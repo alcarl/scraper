@@ -13,22 +13,27 @@ const decodeNodes = (data) => {
 	for (let i = 0; i + 26 <= data.length; i += 26) {
 		nodes.push({
 			address: `${data[i + 20]}.${data[i + 21]}.${data[i + 22]}.${data[i + 23]}`,
+			// ? 新增：直接截取这 4 字节的 IP 二进制，完全不需要消耗性能
+			ipBuf: data.slice(i + 20, i + 24), 
 			nid: data.slice(i, i + 20),
 			port: data.readUInt16BE(i + 24),
 		});
 	}
 	return nodes;
 };
+
 const encodeNodes = (nodes) =>
 	Buffer.concat(
 		nodes.map((node) => {
-			const ipBuf = Buffer.from(node.address.split('.').map((octet) => parseInt(octet, 10)));
+			// ✅ 核心优化：如果节点已有缓存的 ipBuf，直接用；否则（如 bootstrap 节点）才降级处理
+			const ipBuf = node.ipBuf || Buffer.from(node.address.split('.').map((octet) => parseInt(octet, 10)));
 			const portBuf = Buffer.alloc(2);
 
 			portBuf.writeUInt16BE(node.port, 0);
 			return Buffer.concat([node.nid, ipBuf, portBuf]);
 		}),
 	);
+
 const getNeighborID = (target, nid) => Buffer.concat([target.slice(0, 10), nid.slice(10)]);
 const getRandomID = () =>
 	crypto
@@ -116,7 +121,8 @@ const addKnownNode = (node) => {
 	if (nodesTable.size >= NODES_TABLE_MAX) {
 		nodesTable.delete(nodesTable.keys().next().value);
 	}
-	nodesTable.set(key, { nid: node.nid, address: node.address, port: node.port });
+	// ✅ 确保把 node.ipBuf 也一起存进路由表
+	nodesTable.set(key, { nid: node.nid, address: node.address, port: node.port, ipBuf: node.ipBuf });
 };
 
 const compareNodeDistance = (target, a, b) => {
