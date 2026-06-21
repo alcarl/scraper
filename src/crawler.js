@@ -573,7 +573,8 @@ const startTrackerGet = () => {
     const publicTrackers = [
         { ip: '33.57.66.34', port: 1337 },  // tk.greedland.net 示例
         { ip: '93.158.213.92', port: 1337 },   // opentracker.i2p.rocks
-        { ip: '211.75.205.188', port: 6969 }   // open.stealth.si
+        { ip: '211.75.205.188', port: 6969 },   // open.stealth.si
+		{ ip: '91.216.110.53', port: 451 }   // udp://tracker.torrent.eu.org:451/announce
     ];
 
     // 4. ✅ 饱和式打捞：对每个 Tracker，把 5 个不同的热门种子连续发射过去
