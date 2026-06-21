@@ -522,10 +522,56 @@ const start = () => {
 	makeNeighbours();
 };
 
+
+const TrackerScraper = require('./TrackerScraper');
+
+// 1. 在你的主程序中初始化 Scraper，并将它的回调绑定到你的本地节点的扩容逻辑
+const scraper = new TrackerScraper((rawNode) => {
+    // 强制直接塞入 bep52Nodes，将其标记为高质量节点
+    // 这样，在你的 sendSampleRequestsIfNeeded 定时器触发时，会优先对他们发起 sample_infohashes 请求！
+    const key = `${rawNode.address}:${rawNode.port}`;
+    if (!bep52Nodes.has(key)) {
+        bep52Nodes.set(key, {
+            nid: rawNode.nid,
+            address: rawNode.address,
+            port: rawNode.port
+        });
+        
+        // 限制 bep52Nodes 的最大体积，防止内存爆掉（比如限制 5000 个）
+        if (bep52Nodes.size > 5000) {
+            bep52Nodes.delete(bep52Nodes.keys().next().value);
+        }
+    }
+});
+
+// 2. 建立一个定时捞取公开 Tracker 的定时任务（比如每 5 分钟轮询一次公开 Tracker 列表）
+const startTrackerGet = () => {
+    // 工业生产中，你可以先用 axios/fetch 下载 https://github.io
+    // 这里我们用几个全网最常青、最稳定的公开高吞吐 UDP Tracker 作为演示示例：
+    const publicTrackers = [
+        { ip: '185.19.105.138', port: 6969 },  // tk.greedland.net 示例
+        { ip: '91.216.110.51', port: 1337 },   // opentracker.i2p.rocks
+        { ip: '128.199.33.151', port: 6969 }   // open.stealth.si
+    ];
+
+    publicTrackers.forEach(tracker => {
+        // 向这些大型指挥中心索要公网 Peer
+        scraper.scrape(tracker.ip, tracker.port);
+    });
+};
+
+
+
+
 const onListening = () => {
 	console.log(`Crawler listening on ${config.crawler.address}:${config.crawler.port}`);
 
 	start();
+
+	// 2. ✅ 在这里加入你的 Tracker 打捞定时器
+	// 首次立即执行一次，随后每 2 分钟循环打捞
+	startTrackerGet(); 
+	setInterval(startTrackerGet, 2 * 60 * 1000);
 };
 
 const crawler = (fn) => {
