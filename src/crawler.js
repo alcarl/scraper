@@ -571,7 +571,7 @@ const startTrackerGet = () => {
     // 工业生产中，你可以先用 axios/fetch 下载 https://github.io
     // 这里我们用几个全网最常青、最稳定的公开高吞吐 UDP Tracker 作为演示示例：
     const publicTrackers = [
-        { ip: '33.57.66.34', port: 1337 },  // tk.greedland.net 示例
+        { ip: '185.121.168.96', port: 1337 },  // tk.greedland.net 示例
         { ip: '93.158.213.92', port: 1337 },   // opentracker.i2p.rocks
         { ip: '211.75.205.188', port: 6969 },   // open.stealth.si
 		{ ip: '91.216.110.53', port: 451 }   // udp://tracker.torrent.eu.org:451/announce
