@@ -366,13 +366,15 @@ const onMessage = safe((message, rinfo) => {
                 }
             }
         }
-	} else if (type === 'q' && query === 'ping') {
-		const tid = msg.t && Buffer.isBuffer(msg.t) ? msg.t.toString() : msg.t;
-		const nid = msg.a && msg.a.id;
-		if (tid && nid && nid.length === 20) {
-			sendMessage({ r: { id: getNeighborID(nid, clientID) }, t: tid, y: 'r' }, rinfo);
-		}
-	} else if (type === 'q' && query === 'vote') {
+    } else if (type === 'q' && query === 'ping') {
+        // ❌ 废弃原有的 .toString()
+        // ✅ 优化：直接保留对方发来的原始 Buffer 形式的 t，不做任何文本转换
+        const tid = msg.t; 
+        const nid = msg.a && msg.a.id;
+        if (tid && nid && nid.length === 20) {
+            sendMessage({ r: { id: getNeighborID(nid, clientID) }, t: tid, y: 'r' }, rinfo);
+        }
+    } else if (type === 'q' && query === 'vote') {
 		// Bittorrent extension protocol, not needed for scraper, silently ignore
 	} else if (type === 'e') {
 		const errCode = Array.isArray(msg.e) ? msg.e[0] : null;
