@@ -69,7 +69,7 @@ const getRandomTID = () => {
 	return tid;
 };
 const K = 8;
-const NODES_TABLE_MAX = 2000;
+const NODES_TABLE_MAX = 10000;
 const INFOHASH_TABLE_MAX = 50000;
 const SAMPLE_SIZE = 20;
 const SAMPLE_REQUEST_INTERVAL = 60 * 1000;
