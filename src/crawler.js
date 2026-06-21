@@ -89,17 +89,28 @@ const addInfohash = (infohash) => {
 	if (!infohash || infohash.length !== 20) return;
 	const key = infohash.toString('hex');
 	if (infohashTable.has(key)) return;
+
+	// ✅ 核心优化：触发上限时，一次性批量淘汰最旧的 1000 个
 	if (infohashTable.size >= INFOHASH_TABLE_MAX) {
-		infohashTable.delete(infohashTable.keys().next().value);
+		const iterator = infohashTable.keys();
+		const BATCH_DELETE_COUNT = 1000;
+		
+		for (let i = 0; i < BATCH_DELETE_COUNT; i++) {
+			const firstKey = iterator.next().value;
+			if (!firstKey) break;
+			infohashTable.delete(firstKey);
+		}
 	}
+
 	infohashTable.set(key, { infohash, discovered: Date.now() });
 
-	// ✅ 新增：维护最新鲜的 20 项小队列
+	// 维护最新鲜的小队列
 	latestSamples.push(infohash);
 	if (latestSamples.length > SAMPLE_SIZE) {
-		latestSamples.shift(); // 超过 20 个时，弹出最老的一条，永远保持 20 个
+		latestSamples.shift();
 	}
 };
+
 
 
 const getSampleInfohashes = (target) => {
@@ -118,12 +129,22 @@ const addKnownNode = (node) => {
 	if (nodesTable.has(key)) {
 		return;
 	}
+
+	// ✅ 核心优化：路由表触发上限时，一次性批量淘汰最旧的 100 个
 	if (nodesTable.size >= NODES_TABLE_MAX) {
-		nodesTable.delete(nodesTable.keys().next().value);
+		const iterator = nodesTable.keys();
+		const BATCH_DELETE_COUNT = 100;
+
+		for (let i = 0; i < BATCH_DELETE_COUNT; i++) {
+			const firstKey = iterator.next().value;
+			if (!firstKey) break;
+			nodesTable.delete(firstKey);
+		}
 	}
-	// ✅ 确保把 node.ipBuf 也一起存进路由表
+
 	nodesTable.set(key, { nid: node.nid, address: node.address, port: node.port, ipBuf: node.ipBuf });
 };
+
 
 const compareNodeDistance = (target, a, b) => {
 	for (let i = 0; i < 20; i += 1) {
