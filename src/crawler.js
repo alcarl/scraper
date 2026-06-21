@@ -69,7 +69,7 @@ const getRandomTID = () => {
 	return tid;
 };
 const K = 8;
-const NODES_TABLE_MAX = 10000;
+const NODES_TABLE_MAX = 4000;
 const INFOHASH_TABLE_MAX = 50000;
 const SAMPLE_SIZE = 20;
 const SAMPLE_REQUEST_INTERVAL = 60 * 1000;
@@ -425,19 +425,29 @@ const sendNodes = () => {
 	let batch = nodes;
 	let fromTable = false;
 
+	// 💡 只有当最近几秒内一个新节点都没收到（彻底断流）时，才从路由表补充
 	if (batch.length === 0 && nodesTable.size > 0) {
 		batch = pickRandomFromTable(TABLE_PROBE_BATCH);
 		fromTable = true;
 	}
+	
+	// ⚡ 性能防爆：如果 batch 积压得太夸张（例如瞬间收到了好几千个），强制截断前 100 个
+	// 这样可以防止单次 forEach 循环执行时间过长，卡死单线程事件循环
+	if (batch.length > 100) {
+		batch = batch.slice(0, 100);
+	}
+
 	batch.forEach((node) => {
 		sendFindNodeRequest(node, node.nid);
 	});
+	
 	const nodesCount = batch.length;
 
 	if (config.debug) {
-		console.log(`start find node from ${nodesCount}  nodes${fromTable ? ' (from table)' : ''}`);
+		console.log(`start find node from ${nodesCount} nodes${fromTable ? ' (from table)' : ''}`);
 	}
-	nodes = [];
+	
+	nodes = []; // 清空活跃接收缓冲
 	return fromTable;
 };
 const sendBootstrap = () => {

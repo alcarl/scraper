@@ -5,6 +5,7 @@ const crypto = require('crypto');
 class TrackerScraper {
     constructor(addDHTNodeCallback) {
         this.client = dgram.createSocket('udp4');
+        this.client.bind(0); // 💡 传入 0 代表让操作系统随机分配一个空闲端口，与主爬虫彻底隔离！
         this.addDHTNodeCallback = addDHTNodeCallback; // 回调你的 addKnownNode 或 bep52Nodes.set
         // 💡 新增：建立一个内存中的轻量隐式事务队列
         // 专门用来映射: "4字节的随机事务ID" -> "它当时对应的 20字节 infohash"
