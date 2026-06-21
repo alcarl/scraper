@@ -77,6 +77,8 @@ const nodesTable = new Map();
 const infohashTable = new Map();
 const bep52Nodes = new Map(); // "ip:port" -> node obj
 let sampleResponseCounter = 0; // BEP-52 response log counter
+// ✅ 新增：用于常驻存放绝对最新鲜的 20 个 infohash 缓存
+let latestSamples = []; 
 
 const addInfohash = (infohash) => {
 	if (!infohash || infohash.length !== 20) return;
@@ -86,22 +88,20 @@ const addInfohash = (infohash) => {
 		infohashTable.delete(infohashTable.keys().next().value);
 	}
 	infohashTable.set(key, { infohash, discovered: Date.now() });
+
+	// ✅ 新增：维护最新鲜的 20 项小队列
+	latestSamples.push(infohash);
+	if (latestSamples.length > SAMPLE_SIZE) {
+		latestSamples.shift(); // 超过 20 个时，弹出最老的一条，永远保持 20 个
+	}
 };
 
+
 const getSampleInfohashes = (target) => {
-	// ❌ 废弃原有的 50000 次 XOR 大排序
-	// ✅ 优化做法：利用 Map.keys() 极其高效地获取最后/最新加入的 20 个 infohash 即可
-	const samples = [];
-	const iterator = infohashTable.values();
-	
-	// 最多取 SAMPLE_SIZE (20) 个
-	for (let i = 0; i < SAMPLE_SIZE; i++) {
-		const item = iterator.next().value;
-		if (!item) break;
-		samples.push(item.infohash);
-	}
-	return samples;
+	// ✅ 极限优化：直接返回小队列副本，时间复杂度死死卡在 O(1)，单次执行只需几纳秒
+	return [...latestSamples];
 };
+
 
 
 const addKnownNode = (node) => {
