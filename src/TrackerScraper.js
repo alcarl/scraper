@@ -12,9 +12,31 @@ class TrackerScraper {
 
     // 向指定的 Tracker IP 和端口发起打捞
     scrape(trackerIp, trackerPort) {
+        if (config.debug) {
+            console.log(`[Tracker] 正在向中心发起握手: ${trackerIp}:${trackerPort}`);
+        }
+        // 1. 检查传入的是否是纯 IP（简单的正则表达式判定）
+        const isIp = /^[0-9.]+$/.test(trackerHost);
+
+        if (isIp) {
+            // 如果已经是 IP，直接执行发送
+            this._sendHandshake(trackerHost, trackerPort);
+        } else {
+            // 💡 如果是域名，利用本地 DNS 缓存进行极速异步解析
+            dns.lookup(trackerHost, { family: 4 }, (err, address) => {
+                if (!err && address) {
+                    this._sendHandshake(address, trackerPort);
+                }
+                // 忽略解析失败的不可用 Tracker
+            });
+        }
+
+    }
+    // 抽离出来的私有底层发送方法
+    _sendHandshake(ip, port) {
         // 1. 构造 Connection Request (BEP-15 握手)
-        const connectionId = Buffer.from('0000041727101980', 'hex'); // 协议固定常量
-        const action = 0; // 0 代表 connect
+        const connectionId = Buffer.from('0000041727101980', 'hex'); 
+        const action = 0; 
         const transactionId = crypto.randomBytes(4);
 
         const packet = Buffer.alloc(16);
@@ -22,7 +44,8 @@ class TrackerScraper {
         packet.writeInt32BE(action, 8);
         transactionId.copy(packet, 12);
 
-        this.client.send(packet, 0, packet.length, trackerPort, trackerIp);
+        // 使用解析出的纯 IP 发送 UDP 报文
+        this.client.send(packet, 0, packet.length, port, ip);
     }
 
     handleResponse(msg, rinfo) {
@@ -62,12 +85,14 @@ class TrackerScraper {
 
     // 3. 解析二进制紧凑 Peer 列表，并喂给你的 DHT 爬虫
     parsePeers(peersBuffer) {
+        let peerCount = 0; // 新增一个计数器
         // 紧凑模式下，每 6 字节代表一个 Peer（4字节 IP + 2字节 Port）
         for (let i = 0; i + 6 <= peersBuffer.length; i += 6) {
             const ip = `${peersBuffer[i]}.${peersBuffer[i+1]}.${peersBuffer[i+2]}.${peersBuffer[i+3]}`;
             const port = peersBuffer.readUInt16BE(i + 4);
 
             if (port > 0 && port < 65536) {
+                peerCount++; // 计数增加
                 // 💡 核心注入：伪装一个 20 字节的虚拟随机 NID，把这个公网活 Peer 强制喂给你的主循环
                 const virtualNid = crypto.randomBytes(20);
                 
@@ -77,6 +102,11 @@ class TrackerScraper {
                     port: port
                 });
             }
+        }
+
+            // ✅ 打印打捞战果
+        if (config.debug && peerCount > 0) {
+            console.log(`[Tracker] 🎉 成功打捞！从该中心斩获了 ${peerCount} 个公网活 Peer IP`);
         }
     }
 }

@@ -549,9 +549,9 @@ const startTrackerGet = () => {
     // 工业生产中，你可以先用 axios/fetch 下载 https://github.io
     // 这里我们用几个全网最常青、最稳定的公开高吞吐 UDP Tracker 作为演示示例：
     const publicTrackers = [
-        { ip: '185.19.105.138', port: 6969 },  // tk.greedland.net 示例
-        { ip: '91.216.110.51', port: 1337 },   // opentracker.i2p.rocks
-        { ip: '128.199.33.151', port: 6969 }   // open.stealth.si
+        { ip: 'tracker.bittor.pw', port: 1337 },  // tk.greedland.net 示例
+        { ip: 'tracker.opentrackr.org', port: 1337 },   // opentracker.i2p.rocks
+        { ip: 'tracker.dler.org', port: 6969 }   // open.stealth.si
     ];
 
     publicTrackers.forEach(tracker => {
