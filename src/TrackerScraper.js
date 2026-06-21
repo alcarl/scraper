@@ -12,7 +12,7 @@ class TrackerScraper {
     }
 
     // 向指定的 Tracker IP 和端口发起打捞
-    scrape(trackerIp, trackerPort) {
+    scrape(trackerIp, trackerPort, infohash) {
         if (config.debug) {
             console.log(`[Tracker] 正在向中心发起握手: ${trackerIp}:${trackerPort}`);
         }
@@ -25,7 +25,9 @@ class TrackerScraper {
         connectionId.copy(packet, 0);
         packet.writeInt32BE(action, 8);
         transactionId.copy(packet, 12);
-
+        // 💡 关键：把 infohash 挂在 Socket 对象的临时缓存里，或者直接作为属性（因为多进程/实例间是隔离的）
+        // 为了简单防并发错乱，我们直接在发送请求前把当前要查询的 infohash 绑定一下
+        this.currentTargetHash = infohash;
         this.client.send(packet, 0, packet.length, trackerPort, trackerIp);
     }
 
@@ -50,7 +52,11 @@ class TrackerScraper {
         connectionId.copy(packet, 0);                 // Connection ID
         packet.writeInt32BE(1, 8);                    // Action = 1 (announce)
         crypto.randomBytes(4).copy(packet, 12);       // Transaction ID
-        crypto.randomBytes(20).copy(packet, 16);      // Infohash (随机随一个，诱导 Tracker 返回同类活跃 Peer)
+
+        // ✅ 优化：如果有传入的真实 Hash 就用真实的，没有就用常青款 Ubuntu 备用 Hash 垫底
+        const targetHash = this.currentTargetHash || Buffer.from('cb84ccc10d1e2e15097a40becb39a835b57d0712', 'hex');
+        targetHash.copy(packet, 16);
+
         crypto.randomBytes(20).copy(packet, 36);      // Peer ID
         Buffer.alloc(8).copy(packet, 56);             // Downloaded = 0
         Buffer.alloc(8).copy(packet, 64);             // Left = 0

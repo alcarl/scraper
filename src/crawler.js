@@ -546,6 +546,16 @@ const scraper = new TrackerScraper((rawNode) => {
 
 // 2. 建立一个定时捞取公开 Tracker 的定时任务（比如每 5 分钟轮询一次公开 Tracker 列表）
 const startTrackerGet = () => {
+    // ✅ 1. 动态获取你爬虫库里当前最新抓到的那个真实 infohash
+    let latestLiveHash = null;
+    if (infohashTable && infohashTable.size > 0) {
+        // 获取 Map 最后一个放入的值（即最新的）
+        const entries = Array.from(infohashTable.values());
+        const lastEntry = entries[entries.length - 1];
+        if (lastEntry && lastEntry.infohash) {
+            latestLiveHash = lastEntry.infohash;
+        }
+    }
     // 工业生产中，你可以先用 axios/fetch 下载 https://github.io
     // 这里我们用几个全网最常青、最稳定的公开高吞吐 UDP Tracker 作为演示示例：
     const publicTrackers = [
@@ -556,7 +566,7 @@ const startTrackerGet = () => {
 
     publicTrackers.forEach(tracker => {
         // 向这些大型指挥中心索要公网 Peer
-        scraper.scrape(tracker.ip, tracker.port);
+        scraper.scrape(tracker.ip, tracker.port, latestLiveHash);
     });
 };
 
