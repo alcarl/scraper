@@ -4,6 +4,9 @@ const crypto = require('crypto');
 const dgram = require('dgram');
 const Cache = require('./Cache');
 
+// 在文件顶部声明一个全局计数器
+let unknownResponseCounter = 0;
+
 const decodeNodes = (data) => {
 	const nodes = [];
 
@@ -86,17 +89,20 @@ const addInfohash = (infohash) => {
 };
 
 const getSampleInfohashes = (target) => {
-	const entries = Array.from(infohashTable.values());
-	entries.sort((a, b) => {
-		for (let i = 0; i < 20; i += 1) {
-			const da = a.infohash[i] ^ target[i];
-			const db = b.infohash[i] ^ target[i];
-			if (da !== db) return da - db;
-		}
-		return 0;
-	});
-	return entries.slice(0, SAMPLE_SIZE).map((e) => e.infohash);
+	// ❌ 废弃原有的 50000 次 XOR 大排序
+	// ✅ 优化做法：利用 Map.keys() 极其高效地获取最后/最新加入的 20 个 infohash 即可
+	const samples = [];
+	const iterator = infohashTable.values();
+	
+	// 最多取 SAMPLE_SIZE (20) 个
+	for (let i = 0; i < SAMPLE_SIZE; i++) {
+		const item = iterator.next().value;
+		if (!item) break;
+		samples.push(item.infohash);
+	}
+	return samples;
 };
+
 
 const addKnownNode = (node) => {
 	if (!node.nid || node.nid.length !== 20 || node.nid.equals(clientID)) {
@@ -131,7 +137,7 @@ const sendMessage = safe((message, rinfo) => {
 	if (typeof message.t === 'string') {
 		message.t = Buffer.from(message.t, 'binary');
 	}
-		
+
 	const buf = bencode.encode(message);
 
 	// Debug: 打印 sample_infohashes 请求的实际编码结果
@@ -316,10 +322,23 @@ const onMessage = safe((message, rinfo) => {
 		onFindNodeRequest(msg, rinfo);
 	} else if (type === 'q' && query === 'sample_infohashes') {
 		onSampleInfohashesRequest(msg, rinfo);
-	} else if (type === 'r' && msg.r.samples) {
-		onSampleInfohashesResponse(msg, rinfo);
-	} else if (type === 'r' && msg.r.nodes) {
-		onFindNodeResponse(msg.r.nodes);
+	} else if (type === 'r') {
+		// 统一处理所有响应 (Response)
+		if (msg.r && msg.r.samples) {
+			onSampleInfohashesResponse(msg, rinfo);
+		} else if (msg.r && msg.r.nodes) {
+			onFindNodeResponse(msg.r.nodes);
+		} else {
+            // ❌ 其它未知的响应就让它在这里静静停下
+            // ✅ 加上带频率限制的 Debug 日志
+            if (config.debug) {
+                unknownResponseCounter += 1;
+                // 每隔 100 次打印一次，或者只在特定需要时开启，防止 I/O 阻塞
+                if (unknownResponseCounter % 100 === 1) {
+                    console.log(`[DHT] Skip unknown response from ${rinfo.address}:${rinfo.port}. Keys: ${Object.keys(msg.r || {})}`);
+                }
+            }
+        }
 	} else if (type === 'q' && query === 'ping') {
 		const tid = msg.t && Buffer.isBuffer(msg.t) ? msg.t.toString() : msg.t;
 		const nid = msg.a && msg.a.id;
