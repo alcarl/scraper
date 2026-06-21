@@ -581,7 +581,7 @@ const startTrackerGet = () => {
     publicTrackers.forEach(tracker => {
         targetHashes.forEach(hash => {
             // 异步并发，互不干扰
-            scraper.scrape(tracker.host, tracker.port, hash);
+            scraper.scrape(tracker.ip, tracker.port, hash);
         });
     });
 };
