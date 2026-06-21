@@ -15,28 +15,9 @@ class TrackerScraper {
         if (config.debug) {
             console.log(`[Tracker] 正在向中心发起握手: ${trackerIp}:${trackerPort}`);
         }
-        // 1. 检查传入的是否是纯 IP（简单的正则表达式判定）
-        const isIp = /^[0-9.]+$/.test(trackerHost);
-
-        if (isIp) {
-            // 如果已经是 IP，直接执行发送
-            this._sendHandshake(trackerHost, trackerPort);
-        } else {
-            // 💡 如果是域名，利用本地 DNS 缓存进行极速异步解析
-            dns.lookup(trackerHost, { family: 4 }, (err, address) => {
-                if (!err && address) {
-                    this._sendHandshake(address, trackerPort);
-                }
-                // 忽略解析失败的不可用 Tracker
-            });
-        }
-
-    }
-    // 抽离出来的私有底层发送方法
-    _sendHandshake(ip, port) {
         // 1. 构造 Connection Request (BEP-15 握手)
-        const connectionId = Buffer.from('0000041727101980', 'hex'); 
-        const action = 0; 
+        const connectionId = Buffer.from('0000041727101980', 'hex'); // 协议固定常量
+        const action = 0; // 0 代表 connect
         const transactionId = crypto.randomBytes(4);
 
         const packet = Buffer.alloc(16);
@@ -44,8 +25,7 @@ class TrackerScraper {
         packet.writeInt32BE(action, 8);
         transactionId.copy(packet, 12);
 
-        // 使用解析出的纯 IP 发送 UDP 报文
-        this.client.send(packet, 0, packet.length, port, ip);
+        this.client.send(packet, 0, packet.length, trackerPort, trackerIp);
     }
 
     handleResponse(msg, rinfo) {
